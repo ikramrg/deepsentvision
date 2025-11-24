@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+*.pth
+checkpoints/
+models/*.pth
+.DS_Store
+.ipynb_checkpoints
+wandb/
+mlruns/
