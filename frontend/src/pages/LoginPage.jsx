@@ -76,13 +76,7 @@ const LoginPage = () => {
           height: "100%",
           "::-webkit-scrollbar": { display: "none" }
         }}>
-          {/* logo */}
-          <Box sx={{ textAlign: "center", p: 5 }}>
-            <Animate type="fade" delay={0.5}>
-              <img src={images.logo} alt="logo" height={60}></img>
-            </Animate>
-          </Box>
-          {/* logo */}
+          
 
           {/* form */}
           <Box sx={{
