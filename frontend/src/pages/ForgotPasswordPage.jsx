@@ -16,7 +16,7 @@ const ForgotPasswordPage = () => {
     setError("");
     setMessage("");
     try {
-      const res = await fetch("http://localhost:4000/api/auth/forgot", {
+      const res = await fetch("http://localhost:4001/api/auth/forgot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: email })
@@ -36,7 +36,7 @@ const ForgotPasswordPage = () => {
     setError("");
     setMessage("");
     try {
-      const res = await fetch("http://localhost:4000/api/auth/reset", {
+      const res = await fetch("http://localhost:4001/api/auth/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: email, token, password: newPassword })

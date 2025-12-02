@@ -34,7 +34,6 @@ const ToursData = () => {
             />
             <CircularProgress
               variant="determinate"
-              disableShrink
               size={200}
               value={70}
               sx={{

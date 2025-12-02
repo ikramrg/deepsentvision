@@ -8,8 +8,8 @@ import mysql from "mysql2/promise";
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: ["http://localhost:3000", "http://localhost:3001"], credentials: false }));
-app.use(express.json());
+app.use(cors({ origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"], credentials: false }));
+app.use(express.json({ limit: "20mb" }));
 
 const DB_HOST = process.env.DB_HOST || "127.0.0.1";
 const DB_USER = process.env.DB_USER || "root";
@@ -37,6 +37,25 @@ async function ensureDatabase() {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY username_idx (username)
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS chats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    custom_title TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY user_idx (user_id)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    chat_id INT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content TEXT,
+    images_json LONGTEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY chat_idx (chat_id)
+  )`);
+  try { await pool.query("ALTER TABLE chat_messages MODIFY images_json LONGTEXT"); } catch {}
   const [rows] = await pool.query("SELECT id FROM users WHERE username=?", ["admin"]);
   if (rows.length === 0) {
     const hash = await bcrypt.hash("admin123", 10);
@@ -49,6 +68,19 @@ async function ensureDatabase() {
 
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+}
+
+function auth(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const parts = header.split(" ");
+    if (parts.length !== 2 || parts[0] !== "Bearer") return res.status(401).json({ error: "unauthorized" });
+    const payload = jwt.verify(parts[1], JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch {
+    res.status(401).json({ error: "unauthorized" });
+  }
 }
 
 app.post("/api/auth/login", async (req, res) => {
@@ -133,4 +165,118 @@ ensureDatabase().then(() => {
 }).catch(err => {
   console.error("Failed to initialize database", err);
   process.exit(1);
+});
+
+app.get("/api/chats", auth, async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT id, title, custom_title, created_at, updated_at FROM chats WHERE user_id=? ORDER BY updated_at DESC", [req.user.sub]);
+    const chats = rows.map(r => ({ id: r.id.toString(), title: r.title, customTitle: !!r.custom_title, createdAt: r.created_at, updatedAt: r.updated_at, messages: [] }));
+    res.json({ chats });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/api/chats", auth, async (req, res) => {
+  try {
+    const title = req.body?.title || "New Chat";
+    const [ins] = await pool.query("INSERT INTO chats (user_id, title, custom_title) VALUES (?, ?, 0)", [req.user.sub, title]);
+    const chat = { id: ins.insertId.toString(), title, customTitle: false };
+    res.json({ chat });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.get("/api/chats/:id", auth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [rows] = await pool.query("SELECT id, title, custom_title, created_at, updated_at FROM chats WHERE id=? AND user_id=?", [id, req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: "not_found" });
+    const chatRow = rows[0];
+    const [msgs] = await pool.query("SELECT id, role, content, images_json, created_at FROM chat_messages WHERE chat_id=? ORDER BY id ASC", [id]);
+    const messages = msgs.map(m => ({ id: m.id.toString(), role: m.role, content: m.content || "", images: m.images_json ? JSON.parse(m.images_json) : [], createdAt: m.created_at }));
+    res.json({ chat: { id: chatRow.id.toString(), title: chatRow.title, customTitle: !!chatRow.custom_title, createdAt: chatRow.created_at, updatedAt: chatRow.updated_at, messages } });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/api/chats/:id/messages", auth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [rows] = await pool.query("SELECT id FROM chats WHERE id=? AND user_id=?", [id, req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: "not_found" });
+    const role = req.body?.role || "user";
+    const content = req.body?.content || "";
+    const images = Array.isArray(req.body?.images) ? req.body.images : [];
+    const [ins] = await pool.query("INSERT INTO chat_messages (chat_id, role, content, images_json) VALUES (?, ?, ?, ?)", [id, role, content, images.length ? JSON.stringify(images) : null]);
+    await pool.query("UPDATE chats SET updated_at=NOW() WHERE id=?", [id]);
+    res.json({ message: { id: ins.insertId.toString(), role, content, images } });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.patch("/api/chats/:id", auth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const title = req.body?.title;
+    if (!title || !title.trim()) return res.status(400).json({ error: "missing_title" });
+    const [rows] = await pool.query("SELECT id FROM chats WHERE id=? AND user_id=?", [id, req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: "not_found" });
+    await pool.query("UPDATE chats SET title=?, custom_title=1, updated_at=NOW() WHERE id=?", [title.trim(), id]);
+    res.json({ status: "ok" });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.delete("/api/chats/:id", auth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [rows] = await pool.query("SELECT id FROM chats WHERE id=? AND user_id=?", [id, req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: "not_found" });
+    await pool.query("DELETE FROM chat_messages WHERE chat_id=?", [id]);
+    await pool.query("DELETE FROM chats WHERE id=?", [id]);
+    res.json({ status: "ok" });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/api/chats/:id/duplicate", auth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [rows] = await pool.query("SELECT id, title FROM chats WHERE id=? AND user_id=?", [id, req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: "not_found" });
+    const title = rows[0].title + " (Copy)";
+    const [ins] = await pool.query("INSERT INTO chats (user_id, title, custom_title) VALUES (?, ?, 1)", [req.user.sub, title]);
+    const newId = ins.insertId;
+    const [msgs] = await pool.query("SELECT role, content, images_json FROM chat_messages WHERE chat_id=? ORDER BY id ASC", [id]);
+    for (const m of msgs) {
+      await pool.query("INSERT INTO chat_messages (chat_id, role, content, images_json) VALUES (?, ?, ?, ?)", [newId, m.role, m.content, m.images_json]);
+    }
+    res.json({ chat: { id: newId.toString(), title } });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.patch("/api/messages/:id", auth, async (req, res) => {
+  try {
+    const mid = parseInt(req.params.id, 10);
+    const [rows] = await pool.query("SELECT chat_id FROM chat_messages WHERE id=?", [mid]);
+    if (rows.length === 0) return res.status(404).json({ error: "not_found" });
+    const chatId = rows[0].chat_id;
+    const [owns] = await pool.query("SELECT id FROM chats WHERE id=? AND user_id=?", [chatId, req.user.sub]);
+    if (owns.length === 0) return res.status(403).json({ error: "forbidden" });
+    const content = req.body?.content ?? null;
+    const images = Array.isArray(req.body?.images) ? req.body.images : null;
+    await pool.query("UPDATE chat_messages SET content=?, images_json=? WHERE id=?", [content, images ? JSON.stringify(images) : null, mid]);
+    await pool.query("UPDATE chats SET updated_at=NOW() WHERE id=?", [chatId]);
+    res.json({ status: "ok" });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
 });
