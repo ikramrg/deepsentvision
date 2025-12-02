@@ -42,9 +42,10 @@ class DeepSentVision(nn.Module):
         self.dropout = nn.Dropout(dropout)
         
         # CLASSIFIER (adapter aux dimensions réelles)
-        # 768 (texte) + 768 (convnextv2-tiny pooled output) = 1536
+        # 768 (texte) + 1280 (projection vision) = 2048
+        self.vision_proj = nn.Linear(768, 1280)
         self.classifier = nn.Sequential(
-            nn.Linear(1536, 512),
+            nn.Linear(2048, 512),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(512, num_classes)
@@ -58,12 +59,11 @@ class DeepSentVision(nn.Module):
         # Image
         if pixel_values is not None:
             vision_outputs = self.vision_model(pixel_values=pixel_values)
-            vision_features = vision_outputs.pooler_output  # 768 pour convnextv2-tiny
+            vision_features = vision_outputs.pooler_output
         else:
             vision_features = torch.zeros(text_features.size(0), 768, device=text_features.device)
-        
-        # Fusion : 768 + 1280 = 2048
-        combined = torch.cat([text_features, vision_features], dim=1)
+        v1280 = self.vision_proj(vision_features)
+        combined = torch.cat([text_features, v1280], dim=1)
         combined = self.dropout(combined)
         logits = self.classifier(combined)
         return logits

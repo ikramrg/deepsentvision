@@ -76,19 +76,20 @@ export const ChatProvider = ({ children }) => {
       const res = await fetch(`${apiBase}/api/chats`, withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }));
       if (!res.ok) {
         const id = crypto.randomUUID();
-        const chat = { id, title: 'New Chat', messages: [], customTitle: false, createdAt: Date.now(), updatedAt: Date.now() };
+        const chat = { id, title: 'Nouvelle discussion', messages: [], customTitle: false, createdAt: Date.now(), updatedAt: Date.now() };
         setChats((prev) => [chat, ...prev]);
         setActiveId(id);
         return id;
       }
       const data = await res.json();
-      const chat = { id: data.chat.id, title: data.chat.title, messages: [], customTitle: !!data.chat.customTitle, createdAt: Date.now(), updatedAt: Date.now() };
+      const chat = { id: data.chat.id, title: 'Nouvelle discussion', messages: [], customTitle: !!data.chat.customTitle, createdAt: Date.now(), updatedAt: Date.now() };
+      try { await fetch(`${apiBase}/api/chats/${chat.id}`, withAuth({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nouvelle discussion' }) })); } catch {}
       setChats((prev) => [chat, ...prev]);
       setActiveId(chat.id);
       return chat.id;
     } catch {
       const id = crypto.randomUUID();
-      const chat = { id, title: 'New Chat', messages: [], customTitle: false, createdAt: Date.now(), updatedAt: Date.now() };
+      const chat = { id, title: 'Nouvelle discussion', messages: [], customTitle: false, createdAt: Date.now(), updatedAt: Date.now() };
       setChats((prev) => [chat, ...prev]);
       setActiveId(id);
       return id;
@@ -180,9 +181,13 @@ export const ChatProvider = ({ children }) => {
   const exportChatPdf = useCallback(async (chatId) => {
     const root = document.getElementById('chat-export-root');
     if (!root) return;
+    const prevBg = root.style.backgroundColor;
+    const prevColor = root.style.color;
+    root.style.backgroundColor = '#ffffff';
+    root.style.color = '#000000';
     const { jsPDF } = await import('jspdf');
     const html2canvas = (await import('html2canvas')).default;
-    const canvas = await html2canvas(root, { scale: 2 });
+    const canvas = await html2canvas(root, { scale: 2, backgroundColor: '#ffffff' });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF('p', 'pt', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -195,6 +200,8 @@ export const ChatProvider = ({ children }) => {
       if (y + pageHeight < imgHeight) pdf.addPage();
       y += pageHeight;
     }
+    root.style.backgroundColor = prevBg;
+    root.style.color = prevColor;
     pdf.save('chat.pdf');
   }, []);
 
