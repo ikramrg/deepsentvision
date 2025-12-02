@@ -11,3 +11,4 @@ frontend/.cache/
 frontend/.env*
 backend/venv/
 backend/.env*
+backend/src/model/deepsentvision_FINAL.pth
