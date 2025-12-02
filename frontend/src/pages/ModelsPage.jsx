@@ -4,10 +4,10 @@ import AddIcon from "@mui/icons-material/Add";
 import MPaper from "../components/common/MPaper";
 import Animate from "../components/common/Animate";
 import { ChatContext } from "../context/ChatContext";
-import { Line } from "react-chartjs-2";
+import { Line, Bar } from "react-chartjs-2";
 
 const ModelsPage = () => {
-  const { chats, activeId, addMessage, createChat, refreshChats, fetchChat, renameChat } = useContext(ChatContext);
+  const { chats, activeId, addMessage, createChat, refreshChats, fetchChat, renameChat, exportChatPdf } = useContext(ChatContext);
   const chat = useMemo(() => chats.find((c) => c.id === activeId) || null, [chats, activeId]);
   const [pairs, setPairs] = useState([]);
   const [error, setError] = useState("");
@@ -23,46 +23,38 @@ const ModelsPage = () => {
     const token = localStorage.getItem('authToken');
     if (!token) { setError("Veuillez vous connecter pour enregistrer la conversation."); return; }
     let id = chat?.id;
-    if (!id || !/^\d+$/.test(id)) {
-      id = await createChat();
-    }
+    if (!id || !/^\d+$/.test(id)) { id = await createChat(); }
     if (!id || !/^\d+$/.test(id)) { setError("Échec de création de la conversation sur le serveur."); return; }
     try {
+      const results = [];
       for (const p of pairs) {
         const mid = await addMessage(id, { role: 'user', content: (p.text || ''), images: [p.imgSrc] });
         if (!mid) throw new Error('save-failed');
-
         const fd = new FormData();
         fd.append('text', p.text || '');
-        try {
-          const blob = await dataUrlToBlob(p.imgSrc);
-          fd.append('image', new File([blob], 'image.jpg', { type: blob.type || 'image/jpeg' }));
-        } catch {}
-
+        try { const blob = await dataUrlToBlob(p.imgSrc); fd.append('image', new File([blob], 'image.jpg', { type: blob.type || 'image/jpeg' })); } catch {}
         let resp;
-        try {
-          resp = await fetch('http://localhost:8001/analyze', { method: 'POST', body: fd });
-        } catch (e) {
-          setError("Échec de la requête vers l'API (8001). Vérifiez qu'elle fonctionne.");
-          return;
-        }
-        if (!resp.ok) {
-          if (resp.status === 413) {
-            setError("Payload trop volumineux. Importez moins d'images ou réduisez-les.");
-          } else {
-            setError("Échec d'analyse côté API. Réessayez plus tard.");
-          }
-          return;
-        }
+        try { resp = await fetch('http://localhost:8001/analyze', { method: 'POST', body: fd }); } catch (e) { setError("Échec de la requête vers l'API (8001). Vérifiez qu'elle fonctionne."); return; }
+        if (!resp.ok) { if (resp.status === 413) { setError("Payload trop volumineux. Importez moins d'images ou réduisez-les."); } else { setError("Échec d'analyse côté API. Réessayez plus tard."); } return; }
         const json = await resp.json();
+        results.push({ text: p.text || '', image: true, sentiment: json.sentiment, confidence: json.confidence, probabilities: json.probabilities });
         const msg = `Sentiment: ${json.sentiment}\nConfiance: ${json.confidence}\nProbabilités: négatif ${json.probabilities['négatif'] ?? json.probabilities['negatif']}, neutre ${json.probabilities['neutre']}, positif ${json.probabilities['positif']}`;
         const aid = await addMessage(id, { role: 'assistant', content: msg });
         if (!aid) throw new Error('save-failed');
       }
+      if (results.length > 0) {
+        const totals = results.reduce((acc, r) => {
+          const n = Number(r.probabilities['négatif'] ?? r.probabilities['negatif'] ?? 0);
+          const u = Number(r.probabilities['neutre'] ?? 0);
+          const p = Number(r.probabilities['positif'] ?? 0);
+          return { negatif: acc.negatif + n, neutre: acc.neutre + u, positif: acc.positif + p };
+        }, { negatif: 0, neutre: 0, positif: 0 });
+        const avgConfidence = results.reduce((a, r) => a + Number(r.confidence || 0), 0) / results.length;
+        const report = { type: 'sentiment_report', items: results, totals, avgConfidence };
+        await addMessage(id, { role: 'assistant', content: JSON.stringify(report) });
+      }
       await fetchChat(id);
-    } catch {
-      setError("Échec d'enregistrement. Vérifiez la connexion au serveur.");
-    }
+    } catch { setError("Échec d'enregistrement. Vérifiez la connexion au serveur."); }
   };
 
   const onFiles = async (e) => {
@@ -179,6 +171,7 @@ const ModelsPage = () => {
               )}
               <Box>
                 <Button variant="contained" color="success" onClick={onAnalyse}>Analyser</Button>
+                <Button variant="outlined" sx={{ ml: 2 }} onClick={() => { if (chat?.id) exportChatPdf(chat.id); }}>Exporter PDF</Button>
                 {error && (
                   <Typography mt={1} variant="body2" sx={{ color: colors.red[600] }}>{error}</Typography>
                 )}
@@ -203,9 +196,30 @@ const ModelsPage = () => {
                         </Grid>
                       ))
                     ) : (
-                      <Grid item xs={12} key={`text-${idx}`}>
-                        <Typography variant="body2">{m.content}</Typography>
-                      </Grid>
+                      (() => {
+                        let parsed = null;
+                        try { parsed = JSON.parse(m.content || '') } catch {}
+                        if (parsed && parsed.type === 'sentiment_report') {
+                          const data = {
+                            labels: ['Négatif', 'Neutre', 'Positif'],
+                            datasets: [{ label: 'Scores', data: [parsed.totals?.negatif || 0, parsed.totals?.neutre || 0, parsed.totals?.positif || 0], backgroundColor: [colors.red[400], colors.grey[400], colors.green[600]] }]
+                          };
+                          return (
+                            <Grid item xs={12} key={`report-${idx}`}>
+                              <Stack spacing={1}>
+                                <Typography variant="subtitle1" fontWeight={700}>Rapport d'analyse</Typography>
+                                <Bar data={data} options={{ plugins: { legend: { display: false } }, responsive: true, maintainAspectRatio: false }} height="200px" />
+                                <Typography variant="body2">Confiance moyenne: {Number(parsed.avgConfidence || 0).toFixed(2)}</Typography>
+                              </Stack>
+                            </Grid>
+                          );
+                        }
+                        return (
+                          <Grid item xs={12} key={`text-${idx}`}>
+                            <Typography variant="body2">{m.content}</Typography>
+                          </Grid>
+                        );
+                      })()
                     )
                   ))}
                 </Grid>

@@ -75,7 +75,7 @@ const Sidebar = ({ sidebarWidth }) => {
           }}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <List>
+          <List sx={{ display: 'none' }}>
             <ListItem>
               <ListItemButton onClick={toggle} sx={{ borderRadius: '10px' }}>
                 <ListItemIcon sx={{ minWidth: '40px' }}>
@@ -95,7 +95,7 @@ const Sidebar = ({ sidebarWidth }) => {
                 <ListItemIcon sx={{ minWidth: '40px' }}>
                   <SavingsOutlinedIcon />
                 </ListItemIcon>
-                <ListItemText primary={<Typography fontWeight={600}>Nouveau conversation</Typography>} />
+                <ListItemText primary={<Typography fontWeight={600}>Nouvelle discussion</Typography>} />
               </ListItemButton>
             </ListItem>
           </List>
@@ -110,7 +110,7 @@ const Sidebar = ({ sidebarWidth }) => {
                       ) : (
                         <Typography fontWeight={600}>{c.title}</Typography>
                       )
-                    } secondary={((c.messages[c.messages.length - 1]?.content || '').split('\n')[0])} />
+                    } />
                     <IconButton onClick={(e) => openMenu(e, c.id)} sx={{ color: activeId === c.id ? colors.common.white : '' }}>
                       <MoreVertIcon />
                     </IconButton>
