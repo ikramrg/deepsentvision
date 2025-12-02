@@ -5,3 +5,6 @@ pillow
 numpy
 scikit-learn
 tqdm
+fastapi>=0.115.0
+uvicorn[standard]>=0.31.0
+python-multipart>=0.0.9

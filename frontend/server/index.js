@@ -9,7 +9,14 @@ dotenv.config();
 
 const app = express();
 app.use(cors({ origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"], credentials: false }));
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use((err, req, res, next) => {
+  if (err && (err.status === 413 || err.statusCode === 413 || err.type === "entity.too.large")) {
+    return res.status(413).json({ error: "payload_too_large" });
+  }
+  next(err);
+});
 
 const DB_HOST = process.env.DB_HOST || "127.0.0.1";
 const DB_USER = process.env.DB_USER || "root";

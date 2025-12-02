@@ -31,9 +31,34 @@ const ModelsPage = () => {
       for (const p of pairs) {
         const mid = await addMessage(id, { role: 'user', content: (p.text || ''), images: [p.imgSrc] });
         if (!mid) throw new Error('save-failed');
+
+        const fd = new FormData();
+        fd.append('text', p.text || '');
+        try {
+          const blob = await dataUrlToBlob(p.imgSrc);
+          fd.append('image', new File([blob], 'image.jpg', { type: blob.type || 'image/jpeg' }));
+        } catch {}
+
+        let resp;
+        try {
+          resp = await fetch('http://localhost:8001/analyze', { method: 'POST', body: fd });
+        } catch (e) {
+          setError("Échec de la requête vers l'API (8001). Vérifiez qu'elle fonctionne.");
+          return;
+        }
+        if (!resp.ok) {
+          if (resp.status === 413) {
+            setError("Payload trop volumineux. Importez moins d'images ou réduisez-les.");
+          } else {
+            setError("Échec d'analyse côté API. Réessayez plus tard.");
+          }
+          return;
+        }
+        const json = await resp.json();
+        const msg = `Sentiment: ${json.sentiment}\nConfiance: ${json.confidence}\nProbabilités: négatif ${json.probabilities['négatif'] ?? json.probabilities['negatif']}, neutre ${json.probabilities['neutre']}, positif ${json.probabilities['positif']}`;
+        const aid = await addMessage(id, { role: 'assistant', content: msg });
+        if (!aid) throw new Error('save-failed');
       }
-      const finalId = await addMessage(id, { role: 'user', content: 'Analyse' });
-      if (!finalId) throw new Error('save-failed');
       await fetchChat(id);
     } catch {
       setError("Échec d'enregistrement. Vérifiez la connexion au serveur.");
@@ -73,6 +98,18 @@ const ModelsPage = () => {
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+
+  const dataUrlToBlob = (dataUrl) => new Promise((resolve, reject) => {
+    try {
+      const arr = dataUrl.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+      resolve(new Blob([u8arr], { type: mime }));
+    } catch (e) { reject(e); }
   });
 
 

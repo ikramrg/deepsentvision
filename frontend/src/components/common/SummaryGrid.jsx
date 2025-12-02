@@ -1,6 +1,8 @@
 import React from 'react';
-import { images } from "../../assets";
 import { Box, Grid, Stack, Typography, colors } from '@mui/material';
+import ThumbUpOutlinedIcon from '@mui/icons-material/ThumbUpOutlined';
+import RemoveCircleOutlineOutlinedIcon from '@mui/icons-material/RemoveCircleOutlineOutlined';
+import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
 import Animate from "./Animate";
 import MPaper from './MPaper';
 
@@ -8,17 +10,17 @@ const summaryData = [
   {
     title: "Réactions positives",
     value: "311k",
-    image: images.summaryImages.sold
+    icon: <ThumbUpOutlinedIcon sx={{ fontSize: 60, color: colors.green[600] }} />
   },
   {
     title: "Réactions neutres",
     value: "281k",
-    image: images.summaryImages.totalBook
+    icon: <RemoveCircleOutlineOutlinedIcon sx={{ fontSize: 60, color: colors.grey[500] }} />
   },
   {
     title: "Réactions négatives",
     value: "122k",
-    image: images.summaryImages.cancel
+    icon: <CloseOutlinedIcon sx={{ fontSize: 60, color: colors.red[600] }} />
   }
 ];
 
@@ -38,12 +40,8 @@ const SummaryGrid = () => {
                     {summary.title}
                   </Typography>
                 </Stack>
-                <Box sx={{
-                  height: "100px",
-                  width: "100px",
-                  "& img": { width: "100%" }
-                }}>
-                  <img src={summary.image} alt="summary" />
+                <Box sx={{ height: "100px", width: "100px", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {summary.icon}
                 </Box>
               </Stack>
             </MPaper>

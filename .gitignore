@@ -11,3 +11,7 @@ frontend/.cache/
 frontend/.env*
 backend/venv/
 backend/.env*
+.venv/
+backend/.venv/
+backend/src/model/*.pth
+**/*.log
