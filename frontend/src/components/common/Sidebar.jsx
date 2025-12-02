@@ -75,7 +75,7 @@ const Sidebar = ({ sidebarWidth }) => {
           }}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <List sx={{ display: 'none' }}>
+          <List>
             <ListItem>
               <ListItemButton onClick={toggle} sx={{ borderRadius: '10px' }}>
                 <ListItemIcon sx={{ minWidth: '40px' }}>
